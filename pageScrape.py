@@ -3,9 +3,9 @@ from urllib2 import urlopen
 import time
 import csv
 import os
-import datetime
+import sys
 
-BASE_URL = "https://www.kickstarter.com/projects/1678731377/the-main-drain-attachable-urinal"
+# BASE_URL = "https://www.kickstarter.com/projects/1678731377/the-main-drain-attachable-urinal"
 
 def make_soup(url):
     html = urlopen(url).read()
@@ -159,8 +159,8 @@ class KicktstarterPage:
         return rewardList
 
     def parsePage(self):
-        self.project_id = BASE_URL.split('/')[4]
-        urlExtension = BASE_URL.replace('https://www.kickstarter.com' , '')
+        self.project_id = self.pageurl.split('/')[4]
+        urlExtension = self.pageurl.replace('https://www.kickstarter.com' , '')
         self.project_name = removeHtml(str(self.soup.find('a', href=urlExtension)))
         self.date = time.strftime("%d/%m/%Y")
         self.project_author = removeHtml(str(self.soup.find('a', href=urlExtension + '/creator_bio')))
@@ -177,7 +177,7 @@ class KicktstarterPage:
         self.goal = removeHtml(str(self.soup.find('span', "money usd no-code")))
 
         self.updates = self.soup.find('div', "NS_projects_updates_section")
-        commentSectionSoup = make_soup(BASE_URL + '/comments')
+        commentSectionSoup = make_soup(self.pageurl + '/comments')
         self.comments = commentSectionSoup.find('ol', 'comments')
 
         self.faq = self.soup.find('ul', 'faqs')
@@ -237,22 +237,17 @@ class KicktstarterPage:
                              # 'days_to_go': str(self),
                              })
 
-if __name__ == '__main__':
-    print "firing up";
-    page = KicktstarterPage(BASE_URL)
+def scrape_this_page(page_url):
+
+    print 'processing url: ' + page_url
+    page = KicktstarterPage(page_url)
     page.parsePage()
     page.write_project_to_csv()
     page.write_project_update_csv()
 
 
-class KicktsarterPage:
-    soup = None
-    def __init__(self, url):
-        soup = make_soup(url)
+# if __name__ == '__main__':
+#     main()
 
-    def parsePage(self):
-        projectName = self.soup.find("a", "green-dark")
-        date = time.strftime("%d/%m/%Y")
-        project_author = self.soup.find("a", "remote_modal_dialog green-dark")
-        project_data = self.soup.find("data", "Project1165663259")
-        print project_data
+
+

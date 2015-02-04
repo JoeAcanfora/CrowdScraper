@@ -217,31 +217,12 @@ class KicktstarterPage:
                              'location': str(self.location), \
                              'category': str(self.category), \
                              'video_link': str(self.mainVideoLink)})
-    def write_project_update_csv(self):
-        exists = os.path.exists('project_update_TABLE.csv')
-        with open('project_update_TABLE.csv', 'a') as csvfile:
-
-            colHeaders = ['project_id', 'pledged', 'num_backers', #'status',
-                          'days_to_go', 'date']
-            writer = csv.DictWriter(csvfile, fieldnames=colHeaders)
-
-            if not exists:
-                writer.writeheader()
-
-            writer.writerow({'project_id': str(self.project_id), \
-                             'pledged': str(self.pledged), \
-                             'num_backers': str(self.numBackers), \
-                             # 'status': str(status), \
-                             # 'days_to_go': str(sel), \
-                             'date': str(self.date), \
-                             })
 
 if __name__ == '__main__':
     print "firing up";
     page = KicktstarterPage(BASE_URL)
     page.parsePage()
     page.write_project_to_csv()
-    page.write_project_update_csv()
 
 
 class KicktsarterPage:

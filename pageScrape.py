@@ -129,7 +129,7 @@ class KicktstarterPage:
     updates = None
     comments = None
     faq = None
-    author_code = None
+    #author_code = None
     description = None
     risks = None
 
@@ -167,13 +167,16 @@ class KicktstarterPage:
         self.numBackers = removeHtml(str(self.soup.find("data", itemprop='Project[backers_count]')))
         self.pledged = removeHtml(str(self.soup.find('data', itemprop='Project[pledged]')))
         rawEndTime = str(self.soup.find('div', 'ksr_page_timer poll stat'))
-        self.end_date = rawEndTime.split("data-end_time=")[1].split(' data-poll_url=')[0]
+        if not rawEndTime is None:
+            self.end_date = rawEndTime.split("data-end_time=")[1].split(' data-poll_url=')[0]
         # days_left = str(self.soup.find('div', 'ksr_page_timer poll stat'))
 
         self.location = removeHtml(str(self.soup.find_all('a', 'grey-dark mr3 nowrap')[0]))
         self.category = removeHtml(str(self.soup.find_all('a', 'grey-dark mr3 nowrap')[1]))
 
-        self.mainVideoLink = str(self.soup.find('source', src=True)).split('<source src="')[1].split('" type=')[0]
+        self.mainVideoLink = self.soup.find('source', src=True)
+        if not self.soup.find('source', src=True) is None:
+            self.mainVideoLink = self.mainVideoLink['src']
         self.goal = removeHtml(str(self.soup.find('span', "money usd no-code")))
 
         self.updates = self.soup.find('div', "NS_projects_updates_section")
@@ -182,7 +185,6 @@ class KicktstarterPage:
 
         self.faq = self.soup.find('ul', 'faqs')
 
-        self.author_code = self.project_id + '_' + self.project_author.split(' ')[1]
 
         self.description = self.soup.find('div', 'full-description js-full-description responsive-media formatted-lists')
         self.risks = self.soup.find("div", "mb6")
@@ -200,7 +202,7 @@ class KicktstarterPage:
         with open('project_TABLE.csv', 'a') as csvfile:
 
             colHeaders = ['project_id', 'project_name', 'project_url', #'status',
-                          'goal', 'end_date', 'author_code',
+                          'goal', 'end_date',
                           'location', 'category', 'video_link']
             writer = csv.DictWriter(csvfile, fieldnames=colHeaders)
 
@@ -210,10 +212,8 @@ class KicktstarterPage:
             writer.writerow({'project_id': str(self.project_id), \
                              'project_name': str(self.project_name), \
                              'project_url': str(self.pageurl), \
-                             # 'status': str(status), \
                              'goal': str(self.goal), \
                              'end_date': str(self.end_date), \
-                             'author_code': str(self.author_code), \
                              'location': str(self.location), \
                              'category': str(self.category), \
                              'video_link': str(self.mainVideoLink)})

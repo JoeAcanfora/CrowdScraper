@@ -1,11 +1,9 @@
 from bs4 import BeautifulSoup
 from urllib2 import urlopen
 import time
-import csv
-import os
-import sys
-
-# BASE_URL = "https://www.kickstarter.com/projects/1678731377/the-main-drain-attachable-urinal"
+import MySQLdb
+import MySQLdb.cursors
+import re
 
 def make_soup(url):
     html = urlopen(url).read()
@@ -29,8 +27,10 @@ class KickstarterAuthor:
     photoPresent = None
     verified = None
     project_id = None
+    db = None
+    contact = None
 
-    def __init__(self, url, project_id):
+    def __init__(self, url, project_id, db):
 
         authorSoup = make_soup(url)
         self.project_id = project_id
@@ -38,28 +38,17 @@ class KickstarterAuthor:
         self.location = removeHtml(str(authorSoup.find('p', 'h5 bold mb0')))
         self.bio = removeHtml(str(authorSoup.find('div', 'readability')))
         self.website = str(authorSoup.find('ul', 'links list h5 bold', href=True))
+        self.db = db
+        self.write_author_db()
 
-        self.write_author_csv()
-
-    def write_author_csv(self):
-        exists = os.path.exists('author_TABLE.csv')
-        with open('author_TABLE.csv', 'a') as csvfile:
-
-            colHeaders = ['project_id', 'full_name', 'location',
-                          'bio', 'website', 'contact_info',
-                          'photoPresent', 'verified']
-            writer = csv.DictWriter(csvfile, fieldnames=colHeaders)
-
-            if not exists:
-                writer.writeheader()
-
-            writer.writerow({'project_id': str(self.project_id), \
-                             'full_name': str(self.full_name), \
-                             'location': str(self.location), \
-                             'bio': str(self.bio), \
-                             'website': str(self.website)})
-                             # 'contact_info': str(self.contactInfo), \
-                             # 'verified': str(self.verified)})
+    def write_author_db(self):
+        c = self.db.cursor()
+        c.execute("""SELECT series_number FROM project_table WHERE project_id = %s""", (self.project_id,))
+        series_number = c.fetchall()
+        args = (series_number, self.location, self.full_name, self.bio, self.contact)
+        c.execute("""INSERT author_table (series_number, location, name, description, contact)
+        VALUES(%s, %s, %s, %s, %s)""", args)
+        self.db.commit()
 
 class KickstarterReward:
 
@@ -72,8 +61,9 @@ class KickstarterReward:
     description = None
     project_id = None
     limited = False
+    db = None
 
-    def __init__(self, amount, numBackers, dDate, description, project_id, maxBackers):
+    def __init__(self, amount, numBackers, dDate, description, project_id, maxBackers, db):
 
         self.amount = amount
         self.numBackers = numBackers
@@ -82,36 +72,26 @@ class KickstarterReward:
         self.description = description
         self.project_id = project_id
         self.maxBackers = maxBackers
+        self.db = db
         if self.maxBackers > 0:
-            limited = True
+            self.limited = True
 
-        self.save_to_csv()
+        self.save_to_db()
 
-    def save_to_csv(self):
-        exists = os.path.exists('rewards_TABLE.csv')
-        with open('rewards_TABLE.csv', 'a') as csvfile:
-
-            colHeaders = ['project_id', 'pledge_amount', 'num_backers',
-                          'delivery_date', 'description', 'max_backers',
-                          'limited']
-            writer = csv.DictWriter(csvfile, fieldnames=colHeaders)
-
-            if not exists:
-                writer.writeheader()
-
-            writer.writerow({'project_id': str(self.project_id), \
-                             'pledge_amount': str(self.amount), \
-                             'num_backers': str(self.numBackers), \
-                             'delivery_date': str(self.deliveryDate), \
-                             'description': str(self.description), \
-                             'max_backers': str(self.maxBackers), \
-                             'limited': str(self.limited)})
+    def save_to_db(self):
+        c = self.db.cursor()
+        c.execute("""SELECT series_number FROM project_table WHERE project_id = %s""", (self.project_id, ))
+        series_number = c.fetchall()
+        args = (series_number, self.amount, self.numBackers, self.deliveryDate, self.description, self.limited, (self.maxBackers))
+        c.execute("""INSERT INTO rewards_table (series_number, pledge_amount, num_backers, delivery, description, limited, max_limit)
+        VALUES(%s, %s, %s, %s, %s, %s, %s)""", args)
+        self.db.commit()
 
 
 class KicktstarterPage:
     #private memebrs
     soup = None
-    pageurl = None
+    project_url = None
     project_id = None
     urlExtension = None
     project_name = None
@@ -123,20 +103,24 @@ class KicktstarterPage:
     end_date = None
     location = None
     category = None
-    mainVideoLink = None
+    main_video_link = None
     goal = None
     rewards = None
     updates = None
     comments = None
     faq = None
-    #author_code = None
     description = None
     risks = None
+    db = None
+    status = None
+    days_to_go = None
+    currency = None
 
     #methods
-    def __init__(self, url):
+    def __init__(self, url, db):
         self.soup = make_soup(url)
-        self.pageurl = url
+        self.project_url = url
+        self.db = db
 
     def parseRewards(self):
         rewardList = []
@@ -153,19 +137,26 @@ class KicktstarterPage:
             delivery = removeHtml(str(rewardSoup.find('time', 'js-adjust-time')))
             numBackers = removeHtml(str(rewardSoup.find('span', 'num-backers mr1')))
 
-            cleanReward = KickstarterReward(pledgeAmount, numBackers, delivery, description, self.project_id, maxBackers)
+            numBackers = re.findall(r'\d+', numBackers)[0]
+            pledgeAmount = re.findall(r'\d+', pledgeAmount)[0]
+            maxBackers = re.findall(r'\d+', maxBackers)[0]
+
+
+            cleanReward = KickstarterReward(pledgeAmount, numBackers, delivery, description, self.project_id, maxBackers, self.db)
 
             rewardList.append(cleanReward)
         return rewardList
 
     def parsePage(self):
-        self.project_id = self.pageurl.split('/')[4]
-        urlExtension = self.pageurl.replace('https://www.kickstarter.com' , '')
+        self.project_id =  re.findall(r'\d+', str(self.soup.find('data', itemprop='Project[backers_count]')['class']))[0]
+
+        urlExtension = self.project_url.replace('https://www.kickstarter.com' , '')
         self.project_name = removeHtml(str(self.soup.find('a', href=urlExtension)))
         self.date = time.strftime("%d/%m/%Y")
         self.project_author = removeHtml(str(self.soup.find('a', href=urlExtension + '/creator_bio')))
         self.numBackers = removeHtml(str(self.soup.find("data", itemprop='Project[backers_count]')))
         self.pledged = removeHtml(str(self.soup.find('data', itemprop='Project[pledged]')))
+        self.pledged = re.findall(r'\d+', self.pledged)[0]
         rawEndTime = str(self.soup.find('div', 'ksr_page_timer poll stat'))
         if not rawEndTime is None:
             self.end_date = rawEndTime.split("data-end_time=")[1].split(' data-poll_url=')[0]
@@ -174,13 +165,18 @@ class KicktstarterPage:
         self.location = removeHtml(str(self.soup.find_all('a', 'grey-dark mr3 nowrap')[0]))
         self.category = removeHtml(str(self.soup.find_all('a', 'grey-dark mr3 nowrap')[1]))
 
-        self.mainVideoLink = self.soup.find('source', src=True)
+        self.main_video_link = self.soup.find('source', src=True)
         if not self.soup.find('source', src=True) is None:
-            self.mainVideoLink = self.mainVideoLink['src']
-        self.goal = removeHtml(str(self.soup.find('span', "money usd no-code")))
+            self.main_video_link = self.main_video_link['src']
+
+        moneyStats = BeautifulSoup(str(self.soup.find('div', id='pledged')), 'lxml').find('data', 'Project' + str(self.project_id))
+
+        self.currency = moneyStats.get('data-currency')
+
+        self.goal = removeHtml(str(self.soup.find('span', 'money ' + str(self.currency).lower() + ' no-code')))
 
         self.updates = self.soup.find('div', "NS_projects_updates_section")
-        commentSectionSoup = make_soup(self.pageurl + '/comments')
+        commentSectionSoup = make_soup(self.project_url + '/comments')
         self.comments = commentSectionSoup.find('ol', 'comments')
 
         self.faq = self.soup.find('ul', 'faqs')
@@ -189,65 +185,44 @@ class KicktstarterPage:
         self.description = self.soup.find('div', 'full-description js-full-description responsive-media formatted-lists')
         self.risks = self.soup.find("div", "mb6")
 
-        self.parseRewards()
+        # motherLoad = self.soup.find('div', self.project_id)
+        # print motherLoad + '\n\n'
 
+        # c = self.db.cursor()
+        # c.execute("""SELECT project_id FROM project_table where project_id = %s""", (self.project_id,))
+        # if not c.fetchone() is None:
+        self.write_project_to_db()
+
+        self.write_project_update_db()
+
+    def write_project_to_db(self):
+        c = self.db.cursor()
+        args = (self.project_id, self.project_name, self.project_url, self.status, self.goal,
+            self.end_date, self.project_author, self.location, self.main_video_link, self.category, self.currency)
+        sql = ("""INSERT INTO project_table (project_id, project_name, project_url, status, goal, end_date, author_name,
+        location, main_video_link, category, currency) VALUES (%s, %s, %s,%s, %s, %s, %s, %s, %s, %s, %s);""")
+        c.execute(sql, args)
+        self.db.commit()
+        # parse and write rewards
+        self.parseRewards()
+        #parse and write author information
         author_url = str(self.soup.find('a', 'remote_modal_dialog full_bio mr2', href=True))
         author_url = author_url.split('href="')[1]
         author_url = str(author_url.split('">See full bio</a>')[0])
+        self.project_author = KickstarterAuthor(str('https://www.kickstarter.com') + author_url, self.project_id, self.db)
 
-        author = KickstarterAuthor(str('https://www.kickstarter.com') + author_url, self.project_id)
-
-    def write_project_to_csv(self):
-        exists = os.path.exists('project_TABLE.csv')
-        with open('project_TABLE.csv', 'a') as csvfile:
-
-            colHeaders = ['project_id', 'project_name', 'project_url', #'status',
-                          'goal', 'end_date',
-                          'location', 'category', 'video_link']
-            writer = csv.DictWriter(csvfile, fieldnames=colHeaders)
-
-            if not exists:
-                writer.writeheader()
-
-            writer.writerow({'project_id': str(self.project_id), \
-                             'project_name': str(self.project_name), \
-                             'project_url': str(self.pageurl), \
-                             'goal': str(self.goal), \
-                             'end_date': str(self.end_date), \
-                             'location': str(self.location), \
-                             'category': str(self.category), \
-                             'video_link': str(self.mainVideoLink)})
-
-    def write_project_update_csv(self):
-        exists = os.path.exists('project_update_TABLE.csv')
-        with open('project_update_TABLE.csv', 'a') as csvfile:
-
-            colHeaders = ['project_id', 'pledged', 'num_backers', #'status',
-                           'date', 'days_to_go',]
-            writer = csv.DictWriter(csvfile, fieldnames=colHeaders)
-
-            if not exists:
-                writer.writeheader()
-
-            writer.writerow({'project_id': str(self.project_id), \
-                             'pledged': str(self.pledged), \
-                             'num_backers': str(self.numBackers), \
-                             # 'status': str(status), \
-                             'date': str(self.date) \
-                             # 'days_to_go': str(self),
-                             })
+    def write_project_update_db(self):
+        c = self.db.cursor()
+        c.execute("""SELECT series_number FROM project_table WHERE project_id = %s""", (self.project_id,))
+        series_num = c.fetchall()
+        args = (series_num, self.pledged, self.numBackers, self.days_to_go, self.date)
+        c.execute("""INSERT project_updates_table (series_number, pledged, num_backers, days_to_go, date) VALUES (%s, %s, %s, %s, %s);""", args)
+        self.db.commit()
 
 def scrape_this_page(page_url):
 
     print 'processing url: ' + page_url
-    page = KicktstarterPage(page_url)
+    db = MySQLdb.connect(host="mysql.server", user="joeacanfora", passwd="password",db="joeacanfora$CrowdStore")
+
+    page = KicktstarterPage(page_url, db)
     page.parsePage()
-    page.write_project_to_csv()
-    page.write_project_update_csv()
-
-
-# if __name__ == '__main__':
-#     main()
-
-
-

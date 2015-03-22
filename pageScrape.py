@@ -1,6 +1,6 @@
 from bs4 import BeautifulSoup
 from urllib2 import urlopen
-import time
+from datetime import datetime
 import MySQLdb
 import MySQLdb.cursors
 import re
@@ -44,7 +44,7 @@ class KickstarterAuthor:
     def write_author_db(self):
         c = self.db.cursor()
         c.execute("""SELECT series_number FROM project_table WHERE project_id = %s""", (self.project_id,))
-        series_number = c.fetchall()
+        series_number = c.fetchall()[0]
         args = (series_number, self.location, self.full_name, self.bio, self.contact)
         c.execute("""INSERT author_table (series_number, location, name, description, contact)
         VALUES(%s, %s, %s, %s, %s)""", args)
@@ -65,13 +65,13 @@ class KickstarterReward:
 
     def __init__(self, amount, numBackers, dDate, description, project_id, maxBackers, db):
 
-        self.amount = amount
-        self.numBackers = numBackers
-        self.deliveryDate = dDate
+        self.amount = str(amount)
+        self.numBackers = str(numBackers)
+        self.deliveryDate = str(dDate)
         # self.shipsTo = shipsTo
-        self.description = description
-        self.project_id = project_id
-        self.maxBackers = maxBackers
+        self.description = str(description)
+        self.project_id = str(project_id)
+        self.maxBackers = str(maxBackers)
         self.db = db
         if self.maxBackers > 0:
             self.limited = True
@@ -81,10 +81,9 @@ class KickstarterReward:
     def save_to_db(self):
         c = self.db.cursor()
         c.execute("""SELECT series_number FROM project_table WHERE project_id = %s""", (self.project_id, ))
-        series_number = c.fetchall()
-        args = (series_number, self.amount, self.numBackers, self.deliveryDate, self.description, self.limited, (self.maxBackers))
-        c.execute("""INSERT INTO rewards_table (series_number, pledge_amount, num_backers, delivery, description, limited, max_limit)
-        VALUES(%s, %s, %s, %s, %s, %s, %s)""", args)
+        series_number = c.fetchall()[0]
+        args = (series_number, self.amount, self.numBackers, self.deliveryDate, self.description, self.limited, self.maxBackers)
+        c.execute("""INSERT INTO rewards_table (series_number, pledge_amount, num_backers, delivery, description, limited, max_limit) VALUES(%s, %s, %s, %s, %s, %s, %s);""", args)
         self.db.commit()
 
 
@@ -152,15 +151,11 @@ class KicktstarterPage:
 
         urlExtension = self.project_url.replace('https://www.kickstarter.com' , '')
         self.project_name = removeHtml(str(self.soup.find('a', href=urlExtension)))
-        self.date = time.strftime("%d/%m/%Y")
+        self.date = datetime.today().date()
         self.project_author = removeHtml(str(self.soup.find('a', href=urlExtension + '/creator_bio')))
         self.numBackers = removeHtml(str(self.soup.find("data", itemprop='Project[backers_count]')))
         self.pledged = removeHtml(str(self.soup.find('data', itemprop='Project[pledged]')))
         self.pledged = re.findall(r'\d+', self.pledged)[0]
-        rawEndTime = str(self.soup.find('div', 'ksr_page_timer poll stat'))
-        if not rawEndTime is None:
-            self.end_date = rawEndTime.split("data-end_time=")[1].split(' data-poll_url=')[0]
-        # days_left = str(self.soup.find('div', 'ksr_page_timer poll stat'))
 
         self.location = removeHtml(str(self.soup.find_all('a', 'grey-dark mr3 nowrap')[0]))
         self.category = removeHtml(str(self.soup.find_all('a', 'grey-dark mr3 nowrap')[1]))
@@ -185,22 +180,37 @@ class KicktstarterPage:
         self.description = self.soup.find('div', 'full-description js-full-description responsive-media formatted-lists')
         self.risks = self.soup.find("div", "mb6")
 
+        #2015-03-27T20:05:30-04:00
+        rawEnd = str(self.soup.find('div', "ksr_page_timer")['data-end_time'])
+        year = rawEnd.split('-')[0]
+        month = rawEnd.split('-')[1]
+        day = rawEnd.split('-')[2].split('T')[0]
+        self.end_time = datetime.strptime(year + '-' + month +'-' + day, "%Y-%m-%d").date()
+        self.days_to_go = (self.end_time - self.date).days
+
         # motherLoad = self.soup.find('div', self.project_id)
         # print motherLoad + '\n\n'
 
-        # c = self.db.cursor()
-        # c.execute("""SELECT project_id FROM project_table where project_id = %s""", (self.project_id,))
-        # if not c.fetchone() is None:
-        self.write_project_to_db()
+        c = self.db.cursor()
+        c.execute("""SELECT project_id FROM project_table where project_id = %s""", (self.project_id,))
+        existing_project = c.fetchone()
+        if not existing_project is 'None' or not existing_project is None: #if this project already exists
+            self.write_project_to_db()
 
         self.write_project_update_db()
 
     def write_project_to_db(self):
         c = self.db.cursor()
+        vid_present = True
+        if self.main_video_link is None :
+            vid_present = False
+        graded1 = graded2 = False
         args = (self.project_id, self.project_name, self.project_url, self.status, self.goal,
-            self.end_date, self.project_author, self.location, self.main_video_link, self.category, self.currency)
+            str(self.end_date), self.project_author, self.location, self.main_video_link, self.category, self.currency,
+            vid_present, graded1, graded2)
         sql = ("""INSERT INTO project_table (project_id, project_name, project_url, status, goal, end_date, author_name,
-        location, main_video_link, category, currency) VALUES (%s, %s, %s,%s, %s, %s, %s, %s, %s, %s, %s);""")
+        location, main_video_link, category, currency, videopressent, graded1, graded2)
+        VALUES (%s, %s, %s,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);""")
         c.execute(sql, args)
         self.db.commit()
         # parse and write rewards
@@ -214,8 +224,8 @@ class KicktstarterPage:
     def write_project_update_db(self):
         c = self.db.cursor()
         c.execute("""SELECT series_number FROM project_table WHERE project_id = %s""", (self.project_id,))
-        series_num = c.fetchall()
-        args = (series_num, self.pledged, self.numBackers, self.days_to_go, self.date)
+        series_num = c.fetchall()[0]
+        args = (series_num, self.pledged, self.numBackers, self.days_to_go, str(self.date))
         c.execute("""INSERT project_updates_table (series_number, pledged, num_backers, days_to_go, date) VALUES (%s, %s, %s, %s, %s);""", args)
         self.db.commit()
 

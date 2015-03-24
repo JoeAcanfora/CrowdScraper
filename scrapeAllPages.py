@@ -16,7 +16,7 @@ def main():
 
     count = 0
     for p in projs:
-        print "processing " + str(count) + ': ' + p
+        print "processing " + str(count) + ': ' + p["link"]
         scrape_this_page(p)
         count = count + 1
         time.sleep(3)

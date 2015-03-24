@@ -31,11 +31,11 @@ class KickAPIClass():
         token_response = ""
         try:
             token_response = requests.post(auth_url, headers = self.headers, verify = False, data = {'email' : email, 'password' : password })
-            print "token response"
-            print token_response.json()
+            print "token responsed successfully"
+            # print token_response.json()
             self.access_token = token_response.json()["access_token"]
-            print "access token"
-            print self.access_token
+            print "access token grabbed successfully"
+            # print self.access_token
             time.sleep(2)
             url_url = "https://api.kickstarter.com/v1/?oauth_token="+self.access_token
             url_response = requests.get(url_url,headers = self.headers)
@@ -53,31 +53,44 @@ class KickAPIClass():
 		hits_parsed = 0
 		more_to_discover = True
 		projs = []
-		while (more_to_discover is True) and (hits_parsed < total_hits) and (hits_parsed < 4000):
+		while (more_to_discover is True) and (hits_parsed < total_hits) and (hits_parsed < 1100):
 			hits_parsed = hits_parsed + 20 #naive assumption that projects length is always going to be
-			discover_category = requests.get("http://www.kickstarter.com/discover/categories/" + cat_name, headers = self.headers, params = {"page":game_page})
+			discover_category = requests.get("http://www.kickstarter.com/discover/categories/" + cat_name + '?sort=newest', headers = self.headers, params = {"page":game_page})
 			try:
 			    dscCat = discover_category.json()
 			except Exception, e:
 			    print str(e)
-			    game_page = game_page+1
-			    hits_parsed = hits_parsed + 20
 			    time.sleep(4)
 			    break
 			total_hits = dscCat["total_hits"]
 			print discover_category.status_code
 			if discover_category.status_code != 200:
 				more_to_discover = False
-				print discover_category.text
+				# print discover_category.text
 
 			else:
 				for project in dscCat["projects"]:
 					try:
-						projs.append(project["urls"]["web"]["project"])
+					   # print project
+					    thisProj = {}
+					    thisProj["id"] 					= project["id"]
+					    thisProj["creator"] 		= project["creator"]["name"]
+					    thisProj["location"] 		= project["location"]["short_name"]
+					    thisProj["state"] 			= project["state"]
+					    thisProj["deadline"] 		= project["deadline"]
+					    thisProj["launched_at"] = project["launched_at"]
+					    thisProj["name"] 				= project["name"]
+					    thisProj["blurb"]				= project["blurb"]
+					    thisProj["link"] 				= project["urls"]["web"]["project"]
+					    thisProj["goal"]				= project["goal"]
+					    thisProj["pledged"]			= project["pledged"]
+					    thisProj["currency"]		= project["currency"]
+					    thisProj["currency_symbol"]		= project["currency_symbol"]
+					    thisProj["currency_trailing_code"]		= project["currency_trailing_code"]
+					    projs.append(thisProj)
+					    print str(hits_parsed) + "/" + str(total_hits) + ": " + thisProj["link"]
+					    print thisProj["launched_at"]
 
-						print str(hits_parsed) + "/" + str(total_hits) + ": " + project["urls"]["web"]["project"]
-
-						# kickstarter.insert( thisProj )
 					except Exception, e:
 						print str(e)
 						print "failure!!"
@@ -89,7 +102,4 @@ class KickAPIClass():
 				time.sleep(4)
 		return projs
 
-
-
-# mc = MyClass("login@login.login","secrectpassword!")
-#mc.refresh_categories()
+# mc = KickAPIClass("login@login.login","secrectpassword!")

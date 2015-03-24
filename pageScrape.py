@@ -114,12 +114,14 @@ class KicktstarterPage:
     status = None
     days_to_go = None
     currency = None
+    p_dict = None
 
     #methods
-    def __init__(self, url, db):
-        self.soup = make_soup(url)
-        self.project_url = url
+    def __init__(self, dict, db):
+        self.soup = make_soup(dict["link"])
+        self.project_url = dict["link"]
         self.db = db
+        self.p_dict = dict
 
     def parseRewards(self):
         rewardList = []
@@ -147,49 +149,47 @@ class KicktstarterPage:
         return rewardList
 
     def parsePage(self):
-        self.project_id =  re.findall(r'\d+', str(self.soup.find('data', itemprop='Project[backers_count]')['class']))[0]
+        self.project_id =  self.p_dict["id"]
 
         urlExtension = self.project_url.replace('https://www.kickstarter.com' , '')
-        self.project_name = removeHtml(str(self.soup.find('a', href=urlExtension)))
+        self.project_name = self.p_dict["name"]
         self.date = datetime.today().date()
         self.project_author = removeHtml(str(self.soup.find('a', href=urlExtension + '/creator_bio')))
         self.numBackers = removeHtml(str(self.soup.find("data", itemprop='Project[backers_count]')))
-        self.pledged = removeHtml(str(self.soup.find('data', itemprop='Project[pledged]')))
-        self.pledged = re.findall(r'\d+', self.pledged)[0]
+        self.pledged = self.p_dict["pledged"]
 
-        self.location = removeHtml(str(self.soup.find_all('a', 'grey-dark mr3 nowrap')[0]))
+        self.location = self.p_dict["location"]
         self.category = removeHtml(str(self.soup.find_all('a', 'grey-dark mr3 nowrap')[1]))
 
         self.main_video_link = self.soup.find('source', src=True)
         if not self.soup.find('source', src=True) is None:
             self.main_video_link = self.main_video_link['src']
 
-        moneyStats = BeautifulSoup(str(self.soup.find('div', id='pledged')), 'lxml').find('data', 'Project' + str(self.project_id))
+        #moneyStats = BeautifulSoup(str(self.soup.find('div', id='pledged')), 'lxml').find('data', 'Project' + str(self.project_id))
 
-        self.currency = moneyStats.get('data-currency')
+        self.currency = self.p_dict["currency"]
 
-        self.goal = removeHtml(str(self.soup.find('span', 'money ' + str(self.currency).lower() + ' no-code')))
+        self.goal = self.p_dict["goal"]
+        self.status = self.p_dict['state']
 
-        self.updates = self.soup.find('div', "NS_projects_updates_section")
+        self.end_date = self.p_dict['deadline']
+        self.author = self.p_dict['creator']
+
         commentSectionSoup = make_soup(self.project_url + '/comments')
         self.comments = commentSectionSoup.find('ol', 'comments')
 
         self.faq = self.soup.find('ul', 'faqs')
-
-
+        self.updates = self.soup.find('div', "NS_projects_updates_section")
         self.description = self.soup.find('div', 'full-description js-full-description responsive-media formatted-lists')
         self.risks = self.soup.find("div", "mb6")
 
         #2015-03-27T20:05:30-04:00
-        rawEnd = str(self.soup.find('div', "ksr_page_timer")['data-end_time'])
-        year = rawEnd.split('-')[0]
-        month = rawEnd.split('-')[1]
-        day = rawEnd.split('-')[2].split('T')[0]
-        self.end_time = datetime.strptime(year + '-' + month +'-' + day, "%Y-%m-%d").date()
-        self.days_to_go = (self.end_time - self.date).days
-
-        # motherLoad = self.soup.find('div', self.project_id)
-        # print motherLoad + '\n\n'
+        # rawEnd = str(self.soup.find('div', "ksr_page_timer")['data-end_time'])
+        # year = rawEnd.split('-')[0]
+        # month = rawEnd.split('-')[1]
+        # day = rawEnd.split('-')[2].split('T')[0]
+        # self.end_time = datetime.strptime(year + '-' + month +'-' + day, "%Y-%m-%d").date()
+        # self.days_to_go = (self.end_time - self.date).days
 
         c = self.db.cursor()
         c.execute("""SELECT project_id FROM project_table where project_id = %s""", (self.project_id,))
@@ -229,10 +229,10 @@ class KicktstarterPage:
         c.execute("""INSERT project_updates_table (series_number, pledged, num_backers, days_to_go, date) VALUES (%s, %s, %s, %s, %s);""", args)
         self.db.commit()
 
-def scrape_this_page(page_url):
+def scrape_this_page(page_dict):
 
-    print 'processing url: ' + page_url
-    db = MySQLdb.connect(host="mysql.server", user="joeacanfora", passwd="password",db="joeacanfora$CrowdStore")
+    print 'processing url: ' + page_dict["link"]
+    db = MySQLdb.connect(host="mysql.server", user="joeacanfora", passwd="password",db="joeacanfora$CrowdStore", charset='utf8')
 
-    page = KicktstarterPage(page_url, db)
+    page = KicktstarterPage(page_dict, db)
     page.parsePage()

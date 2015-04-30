@@ -150,6 +150,7 @@ class KicktstarterPage:
 
     def parsePage(self):
         self.project_id =  self.p_dict["id"]
+        print str(self.soup.find('div', id='main_content')['class'][0]).replace('Project', '').replace('_cxt', '')
 
         urlExtension = self.project_url.replace('https://www.kickstarter.com' , '')
         self.project_name = self.p_dict["name"]
@@ -184,18 +185,18 @@ class KicktstarterPage:
         self.risks = self.soup.find("div", "mb6")
 
         #2015-03-27T20:05:30-04:00
-        # rawEnd = str(self.soup.find('div', "ksr_page_timer")['data-end_time'])
-        # year = rawEnd.split('-')[0]
-        # month = rawEnd.split('-')[1]
-        # day = rawEnd.split('-')[2].split('T')[0]
-        # self.end_time = datetime.strptime(year + '-' + month +'-' + day, "%Y-%m-%d").date()
-        # self.days_to_go = (self.end_time - self.date).days
+        rawEnd = str(self.soup.find('div', "ksr_page_timer")['data-end_time'])
+        year = rawEnd.split('-')[0]
+        month = rawEnd.split('-')[1]
+        day = rawEnd.split('-')[2].split('T')[0]
+        self.end_time = datetime.strptime(year + '-' + month +'-' + day, "%Y-%m-%d").date()
+        self.days_to_go = (self.end_time - self.date).days
 
-        c = self.db.cursor()
-        c.execute("""SELECT project_id FROM project_table where project_id = %s""", (self.project_id,))
-        existing_project = c.fetchone()
-        if not existing_project is 'None' or not existing_project is None: #if this project already exists
-            self.write_project_to_db()
+        # c = self.db.cursor()
+        # c.execute("""SELECT project_id FROM project_table where project_id = %s""", (self.project_id,))
+        # existing_project = c.fetchone()
+        # if not existing_project is 'None' or not existing_project is None or not existing_project is "()": #if this project already exists
+        #     self.write_project_to_db()
 
         self.write_project_update_db()
 
@@ -208,11 +209,15 @@ class KicktstarterPage:
         args = (self.project_id, self.project_name, self.project_url, self.status, self.goal,
             str(self.end_date), self.project_author, self.location, self.main_video_link, self.category, self.currency,
             vid_present, graded1, graded2)
-        sql = ("""INSERT INTO project_table (project_id, project_name, project_url, status, goal, end_date, author_name,
-        location, main_video_link, category, currency, videopressent, graded1, graded2)
-        VALUES (%s, %s, %s,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);""")
-        c.execute(sql, args)
-        self.db.commit()
+        try:
+            sql = ("""INSERT INTO project_table (project_id, project_name, project_url, status, goal, end_date, author_name,
+            location, main_video_link, category, currency, videopressent, graded1, graded2)
+            VALUES (%s, %s, %s,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);""")
+            c.execute(sql, args)
+            self.db.commit()
+        except Exception, e:
+            print ("error " + str(e))
+            return
         # parse and write rewards
         self.parseRewards()
         #parse and write author information

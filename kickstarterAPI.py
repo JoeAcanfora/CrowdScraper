@@ -53,7 +53,7 @@ class KickAPIClass():
 		hits_parsed = 0
 		more_to_discover = True
 		projs = []
-		while (more_to_discover is True) and (hits_parsed < total_hits) and (hits_parsed < 1100):
+		while (more_to_discover is True) and (hits_parsed < total_hits) and (hits_parsed < 250):
 			hits_parsed = hits_parsed + 20 #naive assumption that projects length is always going to be
 			discover_category = requests.get("http://www.kickstarter.com/discover/categories/" + cat_name + '?sort=newest', headers = self.headers, params = {"page":game_page})
 			try:
